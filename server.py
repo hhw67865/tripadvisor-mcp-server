@@ -147,27 +147,43 @@ async def get_nearby_locations(latitude: float, longitude: float, category: Opti
     return json.dumps(result, indent=2)
 
 @mcp.tool()
-async def get_location_details_tool(location_id: str) -> str:
+async def get_location_details_tool(location_id: int) -> str:
     """
-    Get comprehensive details about a location by ID
+    Get essential details about a location by ID for trip planning
     
     Args:
         location_id: TripAdvisor location ID
     """
     # Get basic details
-    details = await tripadvisor_api_request(f"location/{location_id}/details")
+    full_details = await tripadvisor_api_request(f"location/{location_id}/details")
     
-    # Get additional information if basic request was successful
-    if "error" not in details:
-        # Get photos
-        photos = await tripadvisor_api_request(f"location/{location_id}/photos")
-        details["photos"] = photos.get("data", [])
+    # Extract only the essential information for itinerary planning
+    if "error" not in full_details:
+        essential_details = {
+            "name": full_details.get("name"),
+            "description": full_details.get("description"),
+            "hours": full_details.get("hours", {}).get("weekday_text", []),
+            "rating": full_details.get("rating"),
+            "address": full_details.get("address_obj", {}).get("address_string"),
+        }
         
-        # Get reviews
-        reviews = await tripadvisor_api_request(f"location/{location_id}/reviews")
-        details["reviews"] = reviews.get("data", [])
+        return json.dumps(essential_details, indent=2)
+    else:
+        return json.dumps(full_details, indent=2)  # Return error as is
+
+@mcp.tool()
+async def plan_vacation() -> str:
+    """
+    Initiates the vacation planning process using the structured prompt.
+    This should be used whenever a user wants to plan a trip or vacation.
     
-    return json.dumps(details, indent=2)
+    Returns:
+        A message confirming the vacation planning process has started
+    """
+    # This tool doesn't need to return data, just trigger the prompt
+    return json.dumps({
+        "message": "Vacation planning process initiated. Please follow the structured prompt to create a personalized itinerary."
+    })
 
 #Prompt
 @mcp.prompt()
@@ -177,19 +193,22 @@ def vacation_planner() -> List[dict]:
         {
             "role": "assistant",
             "content": """
-            I'll help you plan a personalized vacation itinerary using TripAdvisor data. To create the best plan for you, I need to know a few details:
+            I'll help you plan a personalized vacation itinerary using TripAdvisor data and Google Maps. To create the best plan for you, I need to know a few details:
 
             1. **Destination**: Where would you like to go?
             2. **Duration**: How many days will you be staying?
-            3. **Meals**: Which meals should I include? (breakfast, lunch, dinner)
-            4. **Pace**: How many attractions would you like to visit per day? (1-5)
-            5. **Travel preferences**: Maximum drive time between stops? (in minutes)
-            6. **Previous visits**: Any places you've already been to and want to skip?
-            7. **Cuisine preferences**: Any specific types of food you prefer or dietary restrictions?
-            8. **Budget level**: What's your approximate budget for activities and dining? (budget, moderate, luxury)
-            9. **Special interests**: Any particular types of attractions you're interested in? (museums, outdoors, shopping, etc.)
+            3. **Priority**: Do you prioritize food experiences or attractions? This is important as I'll build your itinerary around your priority.
+            4. **Meals**: Which meals should I include? (breakfast, lunch, dinner)
+            5. **Pace**: How many attractions would you like to visit per day? (1-5)
+            6. **Travel preferences**: Maximum drive time between stops? (in minutes)
+            7. **Previous visits**: Any places you've already been to and want to skip?
+            8. **Cuisine preferences**: Any specific types of food you prefer or dietary restrictions?
+            9. **Budget level**: What's your approximate budget for activities and dining? (budget, moderate, luxury)
+            10. **Special interests**: Any particular types of attractions you're interested in? (museums, outdoors, shopping, etc.)
 
-            You don't need to answer all of these at once - we can work through them as we go. Let's start with your destination and how long you'll be staying.
+            Based on your priority (food or attractions), I'll first find the best options in that category and then identify complementary options in the other category that are nearby. I'll use Google Maps data to optimize your route for minimal travel distance, creating a seamless experience with the least amount of travel time between stops.
+
+            Please answer all of these.
             """
         }
     ]
